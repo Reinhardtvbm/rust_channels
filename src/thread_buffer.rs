@@ -1,7 +1,4 @@
-use std::collections::VecDeque;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::{sync::{Arc, Mutex}, collections::VecDeque, time::Duration};
 
 #[derive(Debug)]
 pub enum BuffError {
@@ -15,69 +12,85 @@ pub enum BuffSize {
     Infinite,
 }
 
-/// A buffer for communication between two threads:
-///
-/// It holds a vector that can only hold a maximum number of items `capacity`
-/// 
-/// Examples:
-/// ```rust
-///     // for ThreadBuffer<i32>
-///     let new_data: i32 = 30;
-///     
-///     // just try to write the data untill the buffer is no longer full
-///     while let Err(e) = thread_buffer.write(new_data) {
-///         // log the error
-///         println!("{:?}", e); 
-///         std::thread::sleep(Duration::from_micros(10));
-///     }
-/// ```
-pub struct ThreadBuffer<T> {
-    data: Arc<Mutex<VecDeque<T>>>,
+struct Channel<T> {
+    buffer: Arc<Mutex<Vec<VecDeque<T>>>>,
+    capacity: BuffSize,
+    lengths: Vec<usize>,
+}
+
+impl<T: Copy> Channel<T> {
+    pub fn new(capacity: BuffSize) -> Self {
+        Self { buffer: Arc::new(Mutex::new(Vec::new())), capacity, lengths: Vec::new() }
+    }
+    
+    pub fn spawn_endpoint(&mut self) -> () {
+        
+    }
+}
+
+struct Buffer<T> {
+    data: VecDeque<(T, usize)>, 
     capacity: BuffSize,
 }
 
-impl<T: Copy> ThreadBuffer<T> {
-    pub fn new(thread_buffer: &Arc<Mutex<VecDeque<T>>>, capacity: BuffSize) -> Self {
-        Self { data: Arc::clone(thread_buffer), capacity }
+impl<T> Buffer<T> {
+    pub fn new(capacity: BuffSize) -> Self{
+        Self { data: VecDeque::new(), capacity }
+    }
+
+    pub fn try_write(&mut self, data: T) -> Result<(), BuffSize> {
+        if let BuffSize::Finite(size) = self.capacity {
+            for buffer in self.data {
+                if buff
+            }
+        }
+    }
+}
+
+struct ThreadBuffer<T>(Arc<Mutex<VecDeque<T>>>, BuffSize);
+
+impl<T> ThreadBuffer<T> {
+    pub fn new(buffer: &Arc<Mutex<VecDeque<T>>>, capacity: BuffSize) -> Self {
+        Self(Arc::clone(buffer), capacity)
     }
     
-    pub fn enqueue(&mut self, item: T) -> Result<(), BuffError> {
-        let mut buffer = self.data.lock().unwrap();
-
-        if let BuffSize::Finite(capacity) = self.capacity {
-            if buffer.len() <= capacity {
-                Ok(buffer.push_back(item))
-            } else {
-                Err(BuffError::Full)
-            }
-        } else {
-            Ok(buffer.push_back(item))
-        }
-    }
-
-    pub fn dequeue(&mut self) -> Result<T, BuffError> {
-        let mut buffer = self.data.lock().unwrap();
-
-        match buffer.pop_front() {
-            Some(item) => Ok(item),
-            None => Err(BuffError::Full),
-        }
-    }
-
-    pub fn write(&mut self, item: T) {
-        while let Err(_) = self.enqueue(item) {
-            std::thread::sleep(Duration::from_micros(100));
+    pub fn write(&mut self, data: T) {
+        while let Err(_) = self.try_write(&data) {
+            std::thread::sleep(Duration::from_micros(10));
         }
     }
 
     pub fn read(&mut self) -> T {
-        let mut result = self.dequeue();
+        let mut result = self.try_read();
 
         while let Err(_) = result {
-            std::thread::sleep(Duration::from_micros(100));
-            result = self.dequeue();
+            std::thread::sleep(Duration::from_micros(10));
+            result = self.try_read();
         }
 
-        result.unwrap()
+        return result.unwrap();
+    }
+
+    pub fn try_write(&mut self, data: &T) -> Result<(), BuffError> {
+        if let BuffSize::Finite(capacity) = self.1 {
+            let mut buffer = self.0.lock().unwrap();
+
+            if buffer.len() < capacity {
+                Ok(buffer.push_back(*data))
+            } else {
+                Err(BuffError::Full)
+            }
+        } else {
+            Ok(self.0.lock().unwrap().push_back(*data))
+        }
+    }
+
+    pub fn try_read(&mut self) -> Result<T, BuffError> {
+        if let Some(data) = self.0.lock().unwrap().pop_front() {
+            Ok(data)
+        } else {
+            Err(BuffError::Empty)
+        }
     }
 }
+

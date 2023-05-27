@@ -1,6 +1,5 @@
-use std::{time::Duration, println};
-
-use channels::{one_to_one_channel::Channel, thread_buffer::BuffSize};
+use std::time::Duration;
+use channels::{thread_buffer::BuffSize, channel::Channel};
 
 fn main() {
     let channel = Channel::new(BuffSize::Finite(10));
